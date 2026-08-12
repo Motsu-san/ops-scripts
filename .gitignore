@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Environment / secrets
+.env
+.env.*
+
+# Logs & runtime state
+*.log
+state.json
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS junk (misc)
+Thumbs.db
