@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.auto_xavc2h264.usbconnect</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <!-- スクリプトのパスを指定 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>nohup $HOME/repos/ops-scripts/xavc_import/run.sh &gt;/dev/null 2&gt;&amp;1 &amp;</string>
+    </array>
+
+    <!-- USBドライブのパスを指定 (ボリューム名に合わせて変更) -->
+    <!-- StartOnMountはWatchPathsと無関係に「あらゆるマウント」で発火してしまい、
+         NAS接続時にも起動する原因になっていたため削除。WatchPathsのみで監視する -->
+    <key>WatchPaths</key>
+    <array>
+        <string>/Volumes/Untitled</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

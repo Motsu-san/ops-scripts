@@ -2,7 +2,7 @@
 
 cd $(dirname $0)
 current_dir=$(pwd)
-log_file="$current_dir/xavc_s2h264.log"
+log_file="$current_dir/xavc_import.log"
 
 # ログ出力を有効にする場合は、以下の行のコメントアウトを外してください
 # exec > >(tee -a "$log_file") 2>&1
@@ -55,7 +55,7 @@ fi
 upload_dir="/Volumes/Multimedia/Photo"
 # フォルダが存在しない場合はスクリプトを終了
 if [ ! -d "$upload_dir" ]; then
-  upload_dir="/Users/motsu/Photo"
+  upload_dir="$HOME/Photo"
   if [ ! -d "$upload_dir" ]; then
     echo "Error: Directory $upload_dir does not exist."
     exit 1
