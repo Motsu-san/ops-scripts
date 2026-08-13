@@ -21,35 +21,45 @@ touch "$lock_file"
 # スクリプト終了時にロックファイルを削除
 trap 'rm -f "$lock_file"' EXIT
 
-# xavcファイルコピー元フォルダ
+# xavcファイル・RAW画像のコピー元フォルダ
 xavc_dir="/Volumes/Untitled/private/M4ROOT/CLIP"
+raw_image_dir="/Volumes/Untitled/DCIM/100MSDCF"
 script_dir=$(cd "$(dirname "$0")"; pwd)
 tmp_dir="$script_dir/tmp"
 mkdir -p "$tmp_dir"
-# コピー元のフォルダが存在しない場合は直近でローカルにコピー済みのファイルを移動させる
+
+# 動画ファイルをtmpに集める（無ければ動画変換はスキップし、RAWのみの取り込みも可能にする）
+has_video=false
 if [ ! -d "$xavc_dir" ]; then
-  echo "Directory $xavc_dir does not exist. Copying from local."
+  echo "Directory $xavc_dir does not exist."
+  # コピー元がマウントされていない場合は直近でローカルにコピー済みのファイルを移動させる
   newest_xavc_dir=$(find "$script_dir" -maxdepth 1 -type d -name '*_xavc' -print0 | xargs -0 ls -td | head -n 1)
-  # フォルダが存在しない場合はスクリプトを終了
-  if [ ! -d "$newest_xavc_dir" ]; then
-    echo "Error: XAVC directory does not exist."
-    exit 1
-  fi
-  # ファイルが存在する場合はtmpに移動する
-  if ls "$newest_xavc_dir"/C*.MP4 1> /dev/null 2>&1; then
-    echo "Files found. Continuing..."
+  if [ -d "$newest_xavc_dir" ] && ls "$newest_xavc_dir"/C*.MP4 1> /dev/null 2>&1; then
+    echo "Files found in $newest_xavc_dir. Continuing..."
     mv -v "$newest_xavc_dir"/C*.MP4 "$tmp_dir/"
+    has_video=true
   else
-    echo "No files matching C*.MP4 found. Exiting."
-    exit 1
+    echo "No local backup files matching C*.MP4 found. Skipping video conversion."
   fi
 elif ls "$xavc_dir"/C*.MP4 1> /dev/null 2>&1; then
   # コピー元にファイルが存在する場合はローカルにコピーする
   echo "Files found. Continuing..."
   cp -nv "$xavc_dir"/C*.MP4 "$tmp_dir"
+  has_video=true
 else
-  echo "No files matching C*.MP4 found. Exiting."
-  exit 1
+  echo "No files matching C*.MP4 found. Skipping video conversion."
+fi
+
+# RAW画像の有無を確認
+has_raw=false
+if [ -d "$raw_image_dir" ] && ls "$raw_image_dir"/*.ARW 1> /dev/null 2>&1; then
+  has_raw=true
+fi
+
+if [ "$has_video" = false ] && [ "$has_raw" = false ]; then
+  echo "No video or RAW files found. Nothing to do. Exiting."
+  rmdir "$tmp_dir" 2>/dev/null
+  exit 0
 fi
 
 upload_dir="/Volumes/Multimedia/Photo"
@@ -62,21 +72,24 @@ if [ ! -d "$upload_dir" ]; then
   fi
 fi
 
-# バックアップ先・アップロード先を先に確定させる（RAWコピー時点で target_dir が必要なため）
 create_time=$(date +"%Y%m%d_%H%M%S")
-backup_dir="${script_dir}/${create_time}_xavc"
 target_dir="${upload_dir}/${create_time}_alpha6000"
-mkdir -p "$backup_dir" "$target_dir"
+mkdir -p "$target_dir"
 
-# RAW画像をコピー（その日は動画のみでRAWが無いこともあるため、無ければスキップして動画変換は続行する）
-raw_image_dir="/Volumes/Untitled/DCIM/100MSDCF"
-if [ ! -d "$raw_image_dir" ]; then
-  echo "Directory $raw_image_dir does not exist. Skipping RAW copy."
-elif ls "$raw_image_dir"/*.ARW 1> /dev/null 2>&1; then
+# RAW画像をコピー
+if [ "$has_raw" = true ]; then
   cp -v "$raw_image_dir"/*.ARW "$target_dir/"
-else
-  echo "No RAW files matching *.ARW found. Skipping RAW copy."
 fi
+
+# 動画が無い場合はRAWのみの取り込みとしてここで終了する
+if [ "$has_video" = false ]; then
+  echo "No video files to convert. RAW-only import completed successfully."
+  rmdir "$tmp_dir" 2>/dev/null
+  exit 0
+fi
+
+backup_dir="${script_dir}/${create_time}_xavc"
+mkdir -p "$backup_dir"
 
 # 入力ファイルのパターンと出力ファイルのパターンを指定してください
 input_pattern="C%04d.MP4"  # 入力ファイル名のパターン
@@ -137,4 +150,3 @@ else
   echo "No file or directory of target found. Error in copying. Exiting."
   exit 1
 fi
-
