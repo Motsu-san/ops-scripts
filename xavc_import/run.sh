@@ -5,7 +5,9 @@
 # 以前はStartOnMountの影響で別のマウント(NAS接続等)でも実行されていたが，
 # plist側でStartOnMountを削除し，下記のUSB判定ガードも追加したため再度有効化した
 
-cd $(dirname $0)
+set -uo pipefail
+
+cd "$(dirname "$0")"
 current_dir=$(pwd)
 
 # 対象のUSBボリュームが実際にマウントされ，かつUSB接続であることを確認する
@@ -27,7 +29,7 @@ fi
 touch "$lock_file"
 
 # スクリプト終了時にロックファイルを削除
-trap "rm -f $lock_file" EXIT
+trap 'rm -f "$lock_file"' EXIT
 
 # ログファイルのパス
 log_file="$current_dir/xavc_import.log"
@@ -38,8 +40,8 @@ max_backups=5      # 保存する最大バックアップ数
 # バックアップディレクトリを作成（存在しない場合）
 mkdir -p "$backup_dir"
 
-# ログファイルのサイズを取得
-log_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+# ログファイルのサイズを取得（macOSのBSD statなので -f%z を使用）
+log_size=$(stat -f%z "$log_file" 2>/dev/null || echo 0)
 
 # ログファイルが最大サイズを超えた場合
 if [ "$log_size" -ge "$max_size" ]; then

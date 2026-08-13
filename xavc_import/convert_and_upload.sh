@@ -1,6 +1,7 @@
 #!/bin/bash
+set -uo pipefail
 
-cd $(dirname $0)
+cd "$(dirname "$0")"
 current_dir=$(pwd)
 log_file="$current_dir/xavc_import.log"
 
@@ -18,13 +19,13 @@ fi
 touch "$lock_file"
 
 # スクリプト終了時にロックファイルを削除
-trap "rm -f $lock_file" EXIT
+trap 'rm -f "$lock_file"' EXIT
 
 # xavcファイルコピー元フォルダ
 xavc_dir="/Volumes/Untitled/private/M4ROOT/CLIP"
 script_dir=$(cd "$(dirname "$0")"; pwd)
-tmp_dir=$script_dir/tmp
-mkdir -p $tmp_dir
+tmp_dir="$script_dir/tmp"
+mkdir -p "$tmp_dir"
 # コピー元のフォルダが存在しない場合は直近でローカルにコピー済みのファイルを移動させる
 if [ ! -d "$xavc_dir" ]; then
   echo "Directory $xavc_dir does not exist. Copying from local."
@@ -35,18 +36,17 @@ if [ ! -d "$xavc_dir" ]; then
     exit 1
   fi
   # ファイルが存在する場合はtmpに移動する
-  if ls $newest_xavc_dir/C*.MP4 1> /dev/null 2>&1; then
+  if ls "$newest_xavc_dir"/C*.MP4 1> /dev/null 2>&1; then
     echo "Files found. Continuing..."
-    cp -nv $xavc_dir/C*.MP4 $tmp_dir
-    mv -v ${newest_xavc_dir}/C*.MP4 $tmp_dir/
+    mv -v "$newest_xavc_dir"/C*.MP4 "$tmp_dir/"
   else
     echo "No files matching C*.MP4 found. Exiting."
     exit 1
   fi
-elif ls $xavc_dir/C*.MP4 1> /dev/null 2>&1; then
+elif ls "$xavc_dir"/C*.MP4 1> /dev/null 2>&1; then
   # コピー元にファイルが存在する場合はローカルにコピーする
   echo "Files found. Continuing..."
-  cp -nv $xavc_dir/C*.MP4 $tmp_dir
+  cp -nv "$xavc_dir"/C*.MP4 "$tmp_dir"
 else
   echo "No files matching C*.MP4 found. Exiting."
   exit 1
@@ -62,19 +62,27 @@ if [ ! -d "$upload_dir" ]; then
   fi
 fi
 
-# RAW画像をコピー
+# バックアップ先・アップロード先を先に確定させる（RAWコピー時点で target_dir が必要なため）
+create_time=$(date +"%Y%m%d_%H%M%S")
+backup_dir="${script_dir}/${create_time}_xavc"
+target_dir="${upload_dir}/${create_time}_alpha6000"
+mkdir -p "$backup_dir" "$target_dir"
+
+# RAW画像をコピー（その日は動画のみでRAWが無いこともあるため、無ければスキップして動画変換は続行する）
 raw_image_dir="/Volumes/Untitled/DCIM/100MSDCF"
 if [ ! -d "$raw_image_dir" ]; then
-  echo "Error: Directory $raw_image_dir does not exist."
-  exit 1
+  echo "Directory $raw_image_dir does not exist. Skipping RAW copy."
+elif ls "$raw_image_dir"/*.ARW 1> /dev/null 2>&1; then
+  cp -v "$raw_image_dir"/*.ARW "$target_dir/"
+else
+  echo "No RAW files matching *.ARW found. Skipping RAW copy."
 fi
-cp -v $raw_image_dir/*.ARW $target_dir/
 
 # 入力ファイルのパターンと出力ファイルのパターンを指定してください
 input_pattern="C%04d.MP4"  # 入力ファイル名のパターン
 output_pattern="%s_h264_%s.mp4" # 出力ファイル名のパターン
 
-cd $tmp_dir
+cd "$tmp_dir"
 sequence_numbers=$(find "$tmp_dir" -name "C[0-9][0-9][0-9][0-9].MP4" | sed 's/.*C\([0-9][0-9][0-9][0-9]\).MP4/\1/' | sort -n)
 
 # 最初と最後の連番を取得
@@ -118,19 +126,12 @@ echo "successfully converted"
 # THAT MAKES ERRORS IN ALPHA6000
 # rm -v $xavc_dir/*
 
-create_time=$(date +"%Y%m%d_%H%M%S")
-backup_dir=${script_dir}/${create_time}_xavc
-mkdir $backup_dir
-mv -v $tmp_dir/C*.MP4 $backup_dir/
+mv -v "$tmp_dir"/C*.MP4 "$backup_dir/"
+cp -v "$tmp_dir"/*.mp4 "$target_dir/"
 
-create_time=$(date +"%Y%m%d_%H%M%S")
-target_dir="${upload_dir}/${create_time}_alpha6000"
-mkdir $target_dir
-cp -v $tmp_dir/*.mp4 $target_dir/
-
-if ls $target_dir/C${last_number}_h264_*.mp4 1> /dev/null 2>&1; then
+if ls "$target_dir"/C"${last_number}"_h264_*.mp4 1> /dev/null 2>&1; then
   echo "Files found. successfully uploaded"
-  rm -rv $tmp_dir
+  rm -rv "$tmp_dir"
   echo "Delete tmp directory for conversion"
 else
   echo "No file or directory of target found. Error in copying. Exiting."
