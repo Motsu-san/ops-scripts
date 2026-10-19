@@ -43,19 +43,19 @@ create_time=$(date +"%Y%m%d_%H%M%S")
 # 元ファイル(C*.MP4)の作業フォルダ。変換に成功したファイルは削除する
 xavc_work="${script_dir}/${create_time}_xavc"
 # 変換後ファイル(*.mp4)の作業フォルダ。アップロードに成功したファイルは削除する
-mp4_work="${script_dir}/${create_time}_mp4"
-mkdir -p "$xavc_work" "$mp4_work"
+h264_work="${script_dir}/${create_time}_h264"
+mkdir -p "$xavc_work" "$h264_work"
 
 # 動画ファイルを作業フォルダに集める（無ければ動画変換はスキップし、RAWのみの取り込みも可能にする）
 if [ ! -d "$xavc_dir" ]; then
   echo "Directory $xavc_dir does not exist."
   # コピー元がマウントされていない場合は過去の実行で処理が終わらなかったファイルを回収する
-  for dir in "$script_dir"/*_xavc "$script_dir"/*_mp4; do
+  for dir in "$script_dir"/*_xavc "$script_dir"/*_h264; do
     [ -d "$dir" ] || continue
     case "$dir" in
-      "$xavc_work"|"$mp4_work") continue ;;
+      "$xavc_work"|"$h264_work") continue ;;
       *_xavc) leftovers=("$dir"/C*.MP4); dest="$xavc_work" ;;
-      *_mp4) leftovers=("$dir"/*.mp4); dest="$mp4_work" ;;
+      *_h264) leftovers=("$dir"/*.mp4); dest="$h264_work" ;;
     esac
     if [ ${#leftovers[@]} -gt 0 ]; then
       echo "Leftover files found in $dir. Collecting..."
@@ -72,7 +72,7 @@ else
 fi
 
 xavc_files=("$xavc_work"/C*.MP4)
-mp4_files=("$mp4_work"/*.mp4)
+mp4_files=("$h264_work"/*.mp4)
 has_video=false
 if [ ${#xavc_files[@]} -gt 0 ] || [ ${#mp4_files[@]} -gt 0 ]; then
   has_video=true
@@ -86,7 +86,7 @@ fi
 
 if [ "$has_video" = false ] && [ "$has_raw" = false ]; then
   echo "No video or RAW files found. Nothing to do. Exiting."
-  rmdir "$xavc_work" "$mp4_work" 2>/dev/null
+  rmdir "$xavc_work" "$h264_work" 2>/dev/null
   exit 0
 fi
 
@@ -101,7 +101,7 @@ fi
 # 動画が無い場合はRAWのみの取り込みとしてここで終了する
 if [ "$has_video" = false ]; then
   echo "No video files to convert. RAW-only import completed successfully."
-  rmdir "$xavc_work" "$mp4_work" 2>/dev/null
+  rmdir "$xavc_work" "$h264_work" 2>/dev/null
   exit 0
 fi
 
@@ -145,12 +145,12 @@ if [ ${#xavc_files[@]} -gt 0 ]; then
           # 撮影日時を保持するためメタデータをコピー
           # 確認方法は ffprobe -v quiet -print_format json -show_format C0017.mp4 で
           # "creation_time": "2024-10-13T00:02:03.000000Z" とUTCで時刻が打たれている
-          if ffmpeg -y -r 59.94 -i "$input_file" -c:v libx264 -r 59.94 -c:a copy -map_metadata 0 "$mp4_work/$output_file"; then
+          if ffmpeg -y -r 59.94 -i "$input_file" -c:v libx264 -r 59.94 -c:a copy -map_metadata 0 "$h264_work/$output_file"; then
               # 変換が完走した元ファイルは削除する
               rm -v "$input_file"
           else
               echo "Error: failed to convert $input_file. Keeping it in $xavc_work."
-              rm -f "$mp4_work/$output_file"
+              rm -f "$h264_work/$output_file"
               failed=$((failed + 1))
           fi
       else
@@ -168,16 +168,16 @@ rmdir "$xavc_work" 2>/dev/null
 # rm -v $xavc_dir/*
 
 # 変換後ファイルを1件ずつアップロードし、成功したものは削除する
-for mp4_file in "$mp4_work"/*.mp4; do
+for mp4_file in "$h264_work"/*.mp4; do
   if cp -v "$mp4_file" "$target_dir/" && [ -f "$target_dir/$(basename "$mp4_file")" ]; then
     rm -v "$mp4_file"
   else
-    echo "Error: failed to upload $mp4_file. Keeping it in $mp4_work."
+    echo "Error: failed to upload $mp4_file. Keeping it in $h264_work."
     failed=$((failed + 1))
   fi
 done
 # 全てアップロードできていれば空になるので削除する
-rmdir "$mp4_work" 2>/dev/null
+rmdir "$h264_work" 2>/dev/null
 rmdir "$target_dir" 2>/dev/null
 
 if [ "$failed" -gt 0 ]; then
