@@ -9,7 +9,7 @@ log_file="$current_dir/xavc_import.log"
 # exec > >(tee -a "$log_file") 2>&1
 
 # ロックファイルのパス
-lock_file="$(basename "$0").lock"
+lock_file="$current_dir/$(basename "$0").lock"
 # ロックファイルが存在すれば終了
 if [ -e "$lock_file" ]; then
     echo "Another instance is running. Exiting."
