@@ -31,3 +31,7 @@ state.json
 
 # OS junk (misc)
 Thumbs.db
+
+# xavc_import runtime state
+xavc_import/import_history.tsv
+xavc_import/*.tsv.tmp

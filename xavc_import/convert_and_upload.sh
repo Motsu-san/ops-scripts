@@ -39,6 +39,35 @@ fi
 # マッチしないglobを空に展開する
 shopt -s nullglob
 
+# 取り込み履歴。SDカードの元ファイルは消さないため、取り込み済みのファイルを記録して再取り込みを防ぐ
+# 形式: <元ファイル名(拡張子なし)>_<撮影日時>\t<記録日 YYYYMMDD>
+history_file="$script_dir/import_history.tsv"
+touch "$history_file"
+# 1年より古い記録は削除する
+history_cutoff=$(date -v-365d +"%Y%m%d")
+awk -F'\t' -v cutoff="$history_cutoff" '$2 >= cutoff' "$history_file" > "$history_file.tmp" \
+  && mv "$history_file.tmp" "$history_file"
+
+# 履歴のキーを返す。撮影日時が取得できない場合は空を返す（常に取り込み対象になる）
+history_key() {
+  local file=$1 tag=$2 shot_time
+  shot_time=$(exiftool -s3 -d "%Y%m%d_%H%M%S" -"$tag" "$file" 2>/dev/null)
+  [ -n "$shot_time" ] && echo "$(basename "${file%.*}")_${shot_time}"
+}
+
+in_history() {
+  [ -n "$1" ] && grep -qF -- "$1"$'\t' "$history_file"
+}
+
+add_history() {
+  # 撮影日時が取れず末尾が "_" になったキーは記録しない
+  case "$1" in ""|*_) return 0 ;; esac
+  printf '%s\t%s\n' "$1" "$(date +"%Y%m%d")" >> "$history_file"
+}
+
+# 失敗したファイル数（失敗したファイルは作業フォルダに残し、次回の実行で再処理する）
+failed=0
+
 create_time=$(date +"%Y%m%d_%H%M%S")
 # 元ファイル(C*.MP4)の作業フォルダ。変換に成功したファイルは削除する
 xavc_work="${script_dir}/${create_time}_xavc"
@@ -64,9 +93,15 @@ if [ ! -d "$xavc_dir" ]; then
     rmdir "$dir" 2>/dev/null
   done
 elif ls "$xavc_dir"/C*.MP4 1> /dev/null 2>&1; then
-  # コピー元にファイルが存在する場合はローカルにコピーする
+  # コピー元にファイルが存在する場合は、取り込み済みのものを除いてローカルにコピーする
   echo "Files found. Continuing..."
-  cp -nv "$xavc_dir"/C*.MP4 "$xavc_work/"
+  for src in "$xavc_dir"/C*.MP4; do
+    if in_history "$(history_key "$src" LastUpdate)"; then
+      echo "Already imported: $src. Skipping."
+      continue
+    fi
+    cp -nv "$src" "$xavc_work/"
+  done
 else
   echo "No files matching C*.MP4 found. Skipping video conversion."
 fi
@@ -78,9 +113,22 @@ if [ ${#xavc_files[@]} -gt 0 ] || [ ${#mp4_files[@]} -gt 0 ]; then
   has_video=true
 fi
 
-# RAW画像の有無を確認
+# 取り込み済みでないRAW画像を集める
+raw_files=()
+raw_keys=()
+if [ -d "$raw_image_dir" ]; then
+  for src in "$raw_image_dir"/*.ARW; do
+    key=$(history_key "$src" DateTimeOriginal)
+    if in_history "$key"; then
+      echo "Already imported: $src. Skipping."
+      continue
+    fi
+    raw_files+=("$src")
+    raw_keys+=("$key")
+  done
+fi
 has_raw=false
-if [ -d "$raw_image_dir" ] && ls "$raw_image_dir"/*.ARW 1> /dev/null 2>&1; then
+if [ ${#raw_files[@]} -gt 0 ]; then
   has_raw=true
 fi
 
@@ -93,20 +141,26 @@ fi
 target_dir="${upload_dir}/${create_time}_alpha6000"
 mkdir -p "$target_dir"
 
-# RAW画像をコピー
-if [ "$has_raw" = true ]; then
-  cp -v "$raw_image_dir"/*.ARW "$target_dir/"
-fi
+# RAW画像を1件ずつコピーし、成功したものを履歴に記録する
+for ((i=0; i<${#raw_files[@]}; i++)); do
+  if cp -v "${raw_files[$i]}" "$target_dir/"; then
+    add_history "${raw_keys[$i]}"
+  else
+    echo "Error: failed to copy ${raw_files[$i]}."
+    failed=$((failed + 1))
+  fi
+done
 
 # 動画が無い場合はRAWのみの取り込みとしてここで終了する
 if [ "$has_video" = false ]; then
-  echo "No video files to convert. RAW-only import completed successfully."
   rmdir "$xavc_work" "$h264_work" 2>/dev/null
+  if [ "$failed" -gt 0 ]; then
+    echo "$failed file(s) failed. They will be retried on the next run."
+    exit 1
+  fi
+  echo "No video files to convert. RAW-only import completed successfully."
   exit 0
 fi
-
-# 失敗したファイル数（失敗したファイルは作業フォルダに残し、次回の実行で再処理する）
-failed=0
 
 # 入力ファイルのパターンと出力ファイルのパターンを指定してください
 input_pattern="C%04d.MP4"  # 入力ファイル名のパターン
@@ -167,9 +221,12 @@ rmdir "$xavc_work" 2>/dev/null
 # THAT MAKES ERRORS IN ALPHA6000
 # rm -v $xavc_dir/*
 
-# 変換後ファイルを1件ずつアップロードし、成功したものは削除する
+# 変換後ファイルを1件ずつアップロードし、成功したものは履歴に記録して削除する
 for mp4_file in "$h264_work"/*.mp4; do
   if cp -v "$mp4_file" "$target_dir/" && [ -f "$target_dir/$(basename "$mp4_file")" ]; then
+    # C0007_h264_20261017_095533.mp4 -> C0007_20261017_095533
+    mp4_name=$(basename "$mp4_file" .mp4)
+    add_history "${mp4_name/_h264_/_}"
     rm -v "$mp4_file"
   else
     echo "Error: failed to upload $mp4_file. Keeping it in $h264_work."
