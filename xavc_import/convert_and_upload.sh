@@ -62,7 +62,7 @@ if [ "$has_video" = false ] && [ "$has_raw" = false ]; then
   exit 0
 fi
 
-upload_dir="/Volumes/Multimedia/Photo"
+upload_dir="/Volumes/photo"
 # フォルダが存在しない場合はスクリプトを終了
 if [ ! -d "$upload_dir" ]; then
   upload_dir="$HOME/Photo"
